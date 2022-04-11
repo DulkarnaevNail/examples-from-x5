@@ -1,0 +1,531 @@
+object BoIncidentPage {
+
+    private val incidentSaveButton = `$`("button#incident-save-button")
+    private val incidentNumberField = `$x`("//li[contains(text(),'№ инцидента')]")
+    private val sendSmsButton = `$`("button#showSendMessageModal")
+    private val historyTable = `$`("table#audit-history-table")
+    private val pluBlocks = `$$`("div.tab-pane.js-tab-order.fade.active.in div.row.task_container.js-task-container")
+    private val addPluButtons = `$$`("button.btn.btn-default.btn-with-plu.add-task")
+    private val addTaskWithoutPluButtons = `$$`("button.btn.btn-default.btn-without-plu.add-task")
+    private val sendToWmsButton = `$`("#send_to_sp_button")
+
+    fun setRemedyNumber(remedyNumber: String) {
+        `$`("input#remedy_number").value = remedyNumber
+    }
+
+    fun setStatus(statusName: String) {
+        `$`("select#incident-status-id").selectOption(statusName)
+        saveIncident()
+    }
+
+    fun setIncidentObject(objectNamesList: List<String>) {
+        for (objectName in objectNamesList) {
+            `$x`("//div[contains(@class,'form-group-checkboxes') and .//label[contains(text(),'Объект обращения')]]" +
+                    "//input[@id='$objectName']").isSelected = true
+        }
+    }
+
+    fun setIncidentEmployee(employeeName: String) {
+        BoCommonPage.setSelectValueById("user_id", employeeName)
+    }
+
+    fun setClient(user: FOUser) {
+        `$x`("//div[input[@id = 'client-name']]//span[contains(@class, 'glyphicon')]").click()
+        BoCommonPage.boLoadingAppears()
+        BoClientSearchPage.setClientId(user.clientId.toString())
+    }
+
+    fun setOrder(lastOrderId: Int) {
+        `$x`("//div[input[@id = 'incident-order-id']]//span[contains(@class, 'glyphicon')]").click()
+        BoCommonPage.boLoadingAppears(waitAfterAppears = timeout * 7)
+        BoOrderSearchPage.setOrderId(lastOrderId.toString())
+    }
+
+    fun setEmployee(employeeName: String) {
+        BoCommonPage.setSelectValueById("user_id", employeeName)
+    }
+
+    fun setProductName(productName: String) {
+        //по очень длинным именам товаров поиск может не работать, сокращаем
+        val newProductName = productName.split(" ").take(3).joinToString(separator = " ")
+        BoCommonPage.setSelectValueByFieldName("Название:", newProductName)
+    }
+
+    fun setFirstProductName() {
+        waitJquery()
+        BoCommonPage.setSelectFirstValueByName("Название:")
+    }
+
+    fun setProductAmount(amount: Int, numberOfPluBlock: Int = 1) {
+        `$$`("div.tasks input.position_amount")[numberOfPluBlock - 1].value = amount.toString()
+    }
+
+    fun setIncidentReason(reasonName: String) {
+        `$`("select[name*='incident_reason_ids']").selectOption(reasonName)
+    }
+
+    fun setIncidentReasonByIndex(index: Int, numberOfPluBlock: Int = 1) {
+        `$$`("select[name*='incident_reason_ids']")[numberOfPluBlock - 1].selectOption(index)
+    }
+
+    private fun setTaskIncidentCommentary(commentaryText: String, numberOfPluBlock: Int = 1) {
+        `$$`("textarea[name*='[comment]']")[numberOfPluBlock - 1].value = commentaryText
+    }
+
+    private fun setIncidentCommentary(commentaryText: String) {
+        `$`("textarea#comment").value = commentaryText
+    }
+
+    private fun uploadSourceFile(file: File, numberOfPluBlock: Int = 1) {
+        `$$`("div.task_container input.incident-task-file")[numberOfPluBlock - 1].uploadFile(file)
+    }
+
+    private fun uploadCommentFile(file: File) {
+        `$`("div[data-incident-id] input.incident-task-file").uploadFile(file)
+    }
+
+    fun openDecisionTab() {
+        BoCommonPage.openTab(`$`("a[href*='#decision']"))
+    }
+
+    fun saveIncident() {
+        waitJquery()
+        incidentSaveButton.click()
+        incidentNumberField.shouldBe(visible, Duration.ofMillis(timeout * 4))
+    }
+
+    fun setIncidentHeader(incidentObject: List<String>, dataStore: DataStore) {
+        //setRemedyNumber(dataStore.bo.incidentRemedyNumber)
+        //setEmployee("Тест тест") //метод убран, т.к. сейчас при создании инцидента поле заполняется текущим пользователем
+        setClient(dataStore.user)
+        setOrder(dataStore.bo.lastOrderId)
+        setIncidentObject(incidentObject)
+    }
+
+    fun setIncidentProductSection() {
+        `$`("a[href*='#order']").click()
+        BoCommonPage.boLoadingAppears()
+        setFirstProductName()
+        setProductAmount(1)
+        setIncidentReasonByIndex(1)
+        setTaskIncidentCommentary(getRandomString(25))
+        val filePdf = readResourceToFile("test_files/dummy.pdf")
+        filePdf?.let { uploadSourceFile(it) }
+    }
+
+    fun setDeliverySection(
+        reasonName: String,
+        courier: String,
+        comment: String,
+        filePath: String
+    ) {
+        `$`("a[href*='#delivery']").click()
+        BoCommonPage.boLoadingAppears()
+        val callCenterDiv = `$`("div#delivery")
+        callCenterDiv.run {
+            find("select[name*='incident_reason']").selectOptionContainingText(reasonName)
+            find("textarea").value = comment
+            BoCommonPage.setSelectValueByElement(find(By.xpath(".//*[*[contains(text(), 'Курьер')]]//span[@role='combobox']")), courier)
+            val filePdf = readResourceToFile(filePath)
+            filePdf?.let { find("input[name='file']").uploadFile(it) }
+        }
+    }
+
+    fun setCallCenterSection(
+        reasonName: String,
+        operator: String,
+        comment: String,
+        filePath: String
+    ) {
+        `$`("a[href*='#callcenter']").click()
+        BoCommonPage.boLoadingAppears()
+        val callCenterDiv = `$`("div#callcenter")
+        callCenterDiv.run {
+            find("textarea").value = comment
+            find("select[name*='incident_reason']").selectOptionContainingText(reasonName)
+            BoCommonPage.setSelectValueByElement(find(By.xpath(".//*[*[contains(text(), 'Оператор')]]//span[@role='combobox']")), operator)
+            val filePdf = readResourceToFile(filePath)
+            filePdf?.let { find("input[name='file']").uploadFile(it) }
+        }
+    }
+
+    fun setTechProblemSection(
+        reasonName: String,
+        comment: String,
+        filePath: String
+    ) {
+        `$`("a[href*='#problem']").click()
+        BoCommonPage.boLoadingAppears()
+        val callCenterDiv = `$`("div#problem")
+        callCenterDiv.run {
+            find("textarea").value = comment
+            find("select[name*='incident_reason']").selectOptionContainingText(reasonName)
+            val filePdf = readResourceToFile(filePath)
+            filePdf?.let { find("input[name='file']").uploadFile(it) }
+        }
+    }
+
+    fun setIncidentCommentSection() {
+        setIncidentCommentary(getRandomString(25))
+        val fileDocx = readResourceToFile("test_files/file-sample_100kB.docx")
+        fileDocx?.let { uploadCommentFile(it) }
+    }
+
+    fun checkClientPrivilegeBlock(clientPrivileges: MutableList<Privilege>) {
+        BoCommonPage.checkClientPrivilegeBlock(
+            clientPrivileges,
+            `$x`("(//div[b[a[contains(@href, 'client/client')]]]//img)[1]"),
+            `$x`("(//div[b[a[contains(@href, 'client/client')]]]//img)[2]")
+        )
+    }
+
+    fun setSource(sourceName: String = "Чат") {
+        BoCommonPage.setSelectValueById("incident_source_id", sourceName)
+    }
+
+    fun checkFieldsDisabled() {
+        `$`("select#user_id").shouldHave(attribute("disabled"))
+        `$`("input#incident-order-id").shouldHave(attribute("disabled"))
+        `$`("input#client-name").shouldHave(attribute("disabled"))
+        `$`("select#incident_source_id").shouldHave(attribute("disabled"))
+    }
+
+    fun sendSms(templateName: String = "Без шаблона", messageText: String = "", sendButton: SelenideElement = sendSmsButton) {
+        sendButton.click()
+        val sendSmsForm = `$x`("//div[@class='sms-message']//form[contains(@action, 'incident/incident')]")
+        sendSmsForm.shouldBe(visible)
+        BoCommonPage.setSelectValueByName("hand_notification_id", templateName)
+        if (templateName == "Без шаблона" || templateName == "Опоздание") {
+            `$`("textarea[name='notification_message']").value = messageText
+        }
+        val sendButton = sendSmsForm.find(By.xpath(".//button[contains(text(),'Отправить')]"))
+        val successAlert = `$x`("//div[@class='panel-body']//div[contains(@class, 'alert-success')]")
+        sendButton.click()
+        // Если с первого раза не получилось отправить ждем 3 секунды и пробуем повторно
+        try {
+            successAlert.shouldHave(text("Сообщение добавлено в очередь"))
+        } catch (e: UIAssertionError) {
+            wait(3000)
+            sendButton.click()
+            successAlert.shouldHave(text("Сообщение добавлено в очередь"))
+        }
+        sendSmsForm.find(By.xpath(".//button[contains(text(),'Закрыть')]")).click()
+    }
+
+    private fun setPromocodePromo(promoName: String) {
+        BoCommonPage.setSelectValueById("promo_select", promoName)
+    }
+
+    fun setPromocodeCompensation(
+        promoCode: PromoCode
+    ) {
+        `$`("input#promo_code").isSelected = true
+        `$`("div.promo_code").shouldBe(visible)
+        setPromocodePromo(promoCode.promo)
+        `$`("button#generate_promo_code").click()
+        var isGenerated = false
+        var count = 0
+        while (!isGenerated && count < 10) {
+            count++
+            try {
+                `$$`("input#status").actFirstVisible { shouldBe(visible) }
+                isGenerated = true
+            } catch (e: UIAssertionError) {
+                wait(5000)
+            }
+        }
+        `$$`("div#activePromo input#status").actFirstVisible { shouldHave(value("Новый"))}
+        `$$`("div#activePromo input#code").actFirstVisible { shouldHave(attributeMatching("value","^(?!\\s*\$).+")) }
+        promoCode.code = `$$`("div#activePromo input#code").first { it.`is`(visible) }.value ?: ""
+        `$$`("button.send_decision_sms").actFirstVisible {
+            sendSms(templateName = promoCode.smsTemplate, sendButton = this)
+        }
+    }
+
+    fun checkPromocodeCompensation(promoCode: PromoCode) {
+        `$`("a#client-link").click()
+        switchToLastTab()
+        BoCommonPage.boLoadingAppears()
+        BoClientPage.openClientTab("Промокоды")
+        BoClientPromoCodesPage.getPromoCodeRow(promoCode).shouldBe(visible)
+        switchToFirstTab()
+        BoCommonPage.boLoadingAppears()
+    }
+
+    fun setBonusPointsCompensation(changePoints: Boolean = false, points: Int = 0) {
+        val pointsSumInput = `$`("input#pointsSum")
+        `$`("input#points").isSelected = true
+        `$`("div.points").shouldBe(visible)
+        if (changePoints) pointsSumInput.value = points.toString()
+        else pointsSumInput.shouldHave(attributeMatching("value","^(?!\\s*\$).+"))
+        `$x`("//button[contains(text(),'Начислить баллы')]").click()
+        `$`("div.decision_blocks span#statusTransaction b").shouldHave(text("Начисление баллов: Обрабатывается"))
+    }
+
+    fun getIncidentId(): Int {
+        return `$x`("//li[contains(text(),'№ инцидента')]").value!!.stripToInt()
+    }
+
+    fun filterById(incidentId: Int) {
+        BoCommonPage.setHeaderFilterText("number", incidentId.toString())
+        BoCommonPage.boLoadingAppears()
+        `$x`("//table[@id='incident-table']//tbody//tr[td[contains(text(),'$incidentId')]]").shouldBe(visible)
+    }
+
+    fun filterByDateCreated(daysFrom: Int, daysTo: Int) {
+        BoCommonPage.advancedSearchByDate(
+            `$`("div#collapse-search input#incidentStartCreatedAt"),
+            daysFrom,
+            `$`("div#collapse-search input#incidentEndCreatedAt"),
+            daysTo
+        )
+    }
+
+    fun openHistory(incidentId: Int) {
+        `$x`("//table[@id='incident-table']//tbody//tr[td[contains(text(),'$incidentId')]]//span[contains(@class,'btn-action fa fa-history')]").click()
+        switchToLastTab()
+        `$x`("//li[contains(.,'История изменения')]").shouldBe(visible)
+        historyTable.shouldBe(visible)
+    }
+
+    /**
+     * Фильтр истории инцидента по типу изменения.
+     * @param changeType - 0 - создание, 1 - изменение
+     * 1 - изменение
+     */
+    fun filterHistoryChangeType(changeType: Int) {
+        val changeTypeInput = `$`("input[name*='_event_type']")
+        BoCommonPage.advancedSearchLinkClick()
+        `$`("a[href='#collapse-search-json']").click()
+        changeTypeInput.value = changeType.toString()
+        BoCommonPage.advancedSearchPerform()
+        when (changeType) {
+            0 -> {
+                `$$x`("//table[@id='audit-history-table']//tbody//tr[.//span[contains(text(), 'Запись создана')]]")
+                    .shouldHave(CollectionCondition.sizeGreaterThan(0))
+            }
+            1 -> {
+                `$$x`("//table[@id='audit-history-table']//tbody//tr[.//span[contains(text(), 'Запись обновлена')]]")
+                    .shouldHave(CollectionCondition.sizeGreaterThan(0))
+            }
+            else -> fail("В поле передан некорректный тип изменения.")
+        }
+    }
+
+    fun advancedFilterById(id: String) {
+        BoCommonPage.advancedSearch("incident_id", id)
+        BoCommonPage.checkTableCellValue(1, 1, id)
+    }
+
+    fun advancedSearchByStatus(statusName: String) {
+        BoCommonPage.advancedSearchLinkClick()
+        BoCommonPage.setMultiselectValue("Статус", statusName)
+        BoCommonPage.advancedSearchPerform()
+        BoCommonPage.checkTableCellValue(1, 3, statusName)
+    }
+
+    fun advancedSearchByIncidentSource(incidentSource: String) {
+        BoCommonPage.advancedSearchLinkClick()
+        BoCommonPage.setMultiselectValue("Объект обращения", incidentSource)
+        BoCommonPage.advancedSearchPerform()
+        BoCommonPage.checkTableCellValue(1, 4, incidentSource)
+    }
+
+    fun advancedFilterByOrderId(orderId: String) {
+        BoCommonPage.advancedSearch("order_id", orderId)
+        BoCommonPage.checkTableCellValue(1, 5, orderId)
+    }
+
+    fun checkGradeInIncident(gradeName: String, tiedPromo: String = "У грейда нет акций.") {
+        val i = `$$`("div.col-md-6 div b").indexOfFirst {
+            it.text() == gradeName
+        }
+        `$$`("sup.grade-tooltip")[i].hover()
+        val gradeTooltip = if(tiedPromo == "У грейда нет акций.") {
+            `$$`("div.grade-tooltip__content b")[i].text()
+        } else {
+            `$$`("div.grade-tooltip__content ul li a")[i].text()
+        }
+        assertEquals(gradeTooltip, tiedPromo, "привязанные механики грейдов не совпадают")
+    }
+
+    fun checkResponsibleName(name: String, coincidence: Boolean) = if(coincidence) {
+        `$`("span#select2-user_id-container").shouldHave(attribute("title", name))
+    }
+    else {
+        `$`("span#select2-user_id-container").shouldNotHave(attribute("title", name))
+    }
+
+    fun checkAuthorIsClient(){
+        `$`("input#author-name").shouldHave(value("клиент Создал"))
+    }
+
+    fun checkErrorTable(errorText: String) {
+        `$`("span.noty_text").shouldBe(visible).shouldHave(text(errorText))
+    }
+
+    fun openFirstIncidentInTable() {
+        `$$`("table#incident-table tbody td a span.fa-pencil").first().click()
+    }
+
+    fun checkClientSubscription(active:Boolean) {
+        val statusImg = `$$`("div.col-md-6 div img").first()
+        val attrValue = if(active) {
+            "status-on"
+        } else {
+            "status-off"
+        }
+        for(n in 1..10) {
+            if(statusImg.attr("src")!!.contains(attrValue)) {
+                break
+            }
+            wait(2000)
+            refresh()
+        }
+    }
+
+    fun checkAvailabilityOfPosition(positionName: String, active: Boolean) {
+        `$$x`("//*[*[contains(text(), 'Название:')]]//span[@role='combobox']").filterBy(visible)[0].click()
+        val input = `$$`("input.select2-search__field[aria-controls]").filterBy(visible)[0]
+        slowType(input, positionName, 100)
+        val autocomplete = `$x`("//ul[contains(@id, 'select2-')]//*[contains(text(), '$positionName')]")
+        if(active){
+            autocomplete.shouldBe(visible, Duration.ofMillis(timeout * 3))
+        }
+        else{
+            autocomplete.shouldNotBe(visible, Duration.ofMillis(timeout * 3))
+        }
+    }
+
+    fun checkAmountSoldAndSourceOfPosition(positionName: String, amountSoldDB: Int, amountSourceDB: Int) {
+        BoCommonPage.setSelectValueByFieldName("Название:", positionName)
+        val amountSold = `$`("small span.js-position_amount_all")
+        val amountSource = `$`("small span.js-position_ordered_all")
+        amountSold.shouldHave(text(amountSoldDB.toString()))
+        amountSource.shouldHave(text(amountSourceDB.toString()))
+
+    }
+    fun checkAmountSoldAndSourceOfPosition(positionName: String) {
+        BoCommonPage.setSelectValueByFieldName("Название:", positionName)
+        `$`("small span.js-position_ordered_all").shouldNotBe(visible)
+    }
+
+    fun checkCourierName(nameLastFirst: String = "") {
+        `$`("span#select2-courier_id-container").shouldHave(attribute("title", "$nameLastFirst"))
+    }
+
+    fun checkCountOfPluBlocks(count: Int) {
+        pluBlocks.shouldHave(size(count))
+    }
+
+    fun addProductToIncident(productName: String, disabled: Boolean) {
+        BoCommonPage.openTab(`$`("a[href*='#order']"))
+        var fieldNumber = pluBlocks.shouldHave(sizeGreaterThan(0)).size
+        addPluButtons[fieldNumber - 1].click()
+        fieldNumber = pluBlocks.shouldHave(sizeGreaterThan(fieldNumber)).size
+        addPluButtons[fieldNumber - 1].scrollTo()
+        if(disabled) {
+            BoCommonPage.setDisabledSelectValueByFieldName("Название:", productName, fieldNumber)
+            refresh()
+        }
+        else {
+            BoCommonPage.setSelectValueByFieldName("Название:", productName, fieldNumber)
+            setProductAmount(2, fieldNumber)
+            setIncidentReasonByIndex(2, fieldNumber)
+            setTaskIncidentCommentary(getRandomString(25), fieldNumber)
+            val filePdf = readResourceToFile("test_files/dummy.pdf")
+            filePdf?.let { uploadSourceFile(it, fieldNumber) }
+        }
+    }
+
+    fun editProductInPluBlock(productName: String, pluBlockNumber: Int) {
+        BoCommonPage.setSelectValueByFieldName("Название:", productName, pluBlockNumber)
+    }
+
+    fun checkActivityOfStatus(active: Boolean, statusName: String) {
+        `$`("span#select2-incident-status-id-container").click()
+        val statuses = `$$`("ul#select2-incident-status-id-results li").filterBy(text(statusName))
+        if(active) {
+            statuses.shouldHave(size(1))
+        }
+        else {
+            statuses.shouldHave(size(0))
+        }
+        refresh()
+    }
+
+    fun checkPositionName(positionName: String) {
+        //BoCommonPage.openTab(`$`("a[href*='#order']"))
+        `$`("a[href*='#order']").shouldBe(visible, Duration.ofMillis(timeout * 6)).click()
+        `$$x`("//*[*[contains(text(), 'Название:')]]//span[@role='combobox']").shouldHave(sizeGreaterThan(0))[0].shouldHave(text(positionName))
+    }
+
+    fun createIncidentFromOrder() {
+        setProductAmount(1)
+        setIncidentReasonByIndex(1)
+        setTaskIncidentCommentary(getRandomString(25))
+        val filePdf = readResourceToFile("test_files/dummy.pdf")
+        filePdf?.let { uploadSourceFile(it) }
+        setSource()
+        saveIncident()
+    }
+
+    fun addTaskWithoutPlu() {
+        `$`("a[href*='#order']").shouldBe(visible, Duration.ofMillis(timeout * 2)).click()
+        var fieldNumber = pluBlocks.size
+        addTaskWithoutPluButtons[fieldNumber - 1].click()
+        fieldNumber = pluBlocks.shouldHave(sizeGreaterThan(fieldNumber)).size
+        setIncidentReasonByIndex(1, fieldNumber)
+        setTaskIncidentCommentary(getRandomString(25), fieldNumber)
+    }
+
+    fun sendIncidentToWms(positionNumber: Int) {
+        BoCommonPage.openTab(`$`("a[href*='#order']"))
+        pluBlocks.shouldHave(sizeGreaterThan(0))
+        val positionName = `$$x`("//span[contains(@id,'select2-task')]")[positionNumber - 1].getAttribute("title")!!.trimIndent()
+        `$$`("input.send_to_sp_checkbox")[positionNumber - 1].click()
+        sendToWmsButton.shouldBe(visible).click()
+        //`$x`("//button[contains(text(),'Да')]").click()
+        BoCommonPage.openTab(`$`("a[href*='#sp']"))
+        `$x`("//input[@value='$positionName']").shouldBe(visible)
+    }
+
+    fun updateReasonOfPosition(positionNumber: Int, reasonName: String) {
+        BoCommonPage.openTab(`$`("a[href*='#order']"))
+        BoCommonPage.setSelectValueByFieldName("Причина обращения:", reasonName, positionNumber)
+        saveIncident()
+    }
+}
+
+object BoIncidentStatusPage {
+
+    fun createIncidentStatus(incidentStatus: BoIncidentStatus) {
+        BoCommonPage.clickCreate()
+        incidentStatus.name = getRandomString(10)
+        incidentStatus.nameForClient = getRandomString(10)
+        `$`("input#name").value = incidentStatus.name
+        `$`("input#name_for_client").value = incidentStatus.nameForClient
+        if(!incidentStatus.active) {
+            clickOnActivityCheckBox()
+        }
+    }
+
+    fun saveIncidentStatus() {
+        BoCommonPage.saveForm()
+    }
+
+    fun clickOnActivityCheckBox() {
+        BoCommonPage.clickOnActivityCheckbox()
+    }
+
+    fun findIncidentStatusById(statusId: Int) {
+        BoCommonPage.setHeaderFilterText("incident_status_id", statusId.toString())
+        BoCommonPage.boLoadingAppears()
+        `$x`("//table[@id='incident-table']//tbody//tr[td[contains(text(),'$statusId')]]").shouldBe(visible)
+    }
+
+    fun deleteIncidentStatus(statusId: Int) {
+        findIncidentStatusById(statusId)
+        `$`("table#incident-table tbody tr td a[title='Удалить']").click()
+    }
+}
