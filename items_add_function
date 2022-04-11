@@ -1,0 +1,54 @@
+/**
+     * Метод выполняет поиск в каталоге товаров в заказе по ключевым словам(выбраны кофе, конфеты и молоко,
+     * потому что по таким словам поиск гарантировано возвращает непустой результат поиска с уцененными товарам).
+     * После того, как по ключ.слову найдены товары, метод начинает перебирать каждую найденную позицию, кликая на стрелочку в строке в таблице
+     * чтобы раскрыть выпадающий список с su, которые находятся внутри plu - именно su-шки добавлет метод в состав заказа.
+     */
+    fun addMarkdownProducts() {
+        scrollBottom()
+        swapViewPanelToList()
+        val productsName = listOf("кофе", "конфеты", "молоко")
+        val remainColumn = BoCommonPage.getSerialNumberOfColumnByName("#edit-products-table", "Остаток")
+        `$`("select[name='edit-products-table_length']").selectOption("100")
+        //в самом первом цикле выполняется поиск по ключевым словам
+        run breaking@ {
+            productsName.forEach forEachLoop@{ product ->
+                searchProduct(product)
+                BoCommonPage.boLoadingAppears()
+                //если по ключевому слову результат поиска пустой, то переходим к следующей итерации - то есть выполняем поиск по следующему ключевому слову
+                if(`$`("table#edit-products-table tbody tr td").text == "В таблице отсутствуют данные") {
+                    return@forEachLoop
+                }
+                //в этом цикле перебираем результаты поиска по ключевому слову
+                `$$`("span.glyphicon-triangle-bottom").forEach { row ->
+                    //это условие нуно для того, чтобы тест не залезал в следующую найденную позицию, пока не закончит добавление текущей позиции
+                    if(`$$`("div[id^='markdown-products-collapse'] table.table-striped").size == 0) {
+                        row.click()
+                    }
+                    BoCommonPage.boLoadingAppears()
+                    val addButtons = `$$`(".btn.btn-success.fa.fa-shopping-cart")
+                    val productAmountInput = `$$`("input.form-control.product-amount-input")
+                    //в этом цикле перебираем SU, которые вложены в каждом найденном уцененном товаре
+                    //в случае уцененных товаров мы добавляем не сам plu, а su, которые вложены в plu
+                    //т.к. одна часть позиции может быть уцененна по одному услвоию, а вторая часть позиции уцененна по другому условию - такие su не склеиваются в одну plu
+                    addButtons.forEachIndexed secondForEachLoop@{ i, addButton ->
+                        val positionQuantity =
+                            `$$`(".table.table-striped.table-condensed.table-hover.table-bordered tbody tr td")[remainColumn]
+                                .text()
+                        productAmountInput[i].value = positionQuantity
+                        addButton.click()
+                        //если при добавлении позиции происходит ошибка, то мы прерываем работу с позицией и переходим к резервированию следующей
+                        if(`$$`("div.noty_bar.noty_type_error").filterBy(text("Не удалось зарезервировать товар с типом \"Уценка\"")).size > 0) {
+                            `$$`("div.noty_bar.noty_type_error").first().click()
+                            return@secondForEachLoop
+                        }
+                        //если сумма заказа превысила минимальную сумму заказа, то прерываем весь процесс резервирования уцененных товаров
+                        //т.к. нам нужно лишь то кол-во товара, достаточное для оформления заказа
+                        if(BoOrderPage.getOrderFullSumFromHeader() > Config.FO.fo_min_sum) {
+                            return@breaking
+                        }
+                    }
+                }
+            }
+        }
+    }
