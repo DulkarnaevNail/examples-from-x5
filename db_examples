@@ -1,0 +1,78 @@
+fun updateActivityOfCurrentDaySlotBlock(shopId: Int, deliveryName:String, activity:Boolean) {
+        val deliveryTypeId =getDeliveyTypeId(deliveryName)
+        val zoneId = getActiveZoneId(shopId, deliveryTypeId)
+        val deliveryId = getDeliveryId(zoneId)
+        val slotId = getSlotIdByDeliveryId(deliveryId)
+        val deliverySlotId = getDeliverySlotId(slotId, deliveryId)
+
+        val params = MapSqlParameterSource()
+        params.addValue("slotId", slotId, Types.INTEGER)
+        params.addValue("deliverySlotId", deliverySlotId, Types.INTEGER)
+        params.addValue("activity", activity, Types.BOOLEAN)
+
+        val query =
+            """update transport.slot_block
+                    set is_active = :activity
+                    where delivery_slot_id = :deliverySlotId
+                    and slot_id = :slotId
+                    and date = current_date
+                """.trimIndent()
+
+        template.update(query, params)
+    }
+
+    fun getRandomUserId(): Int {
+        val params = MapSqlParameterSource()
+
+        val query = """
+            select u.user_id from main.user u
+            where u.is_active = true
+            order by random()
+            limit 1;
+        """.trimIndent()
+
+        return template.queryForObject(query, params, Int::class.java)!!
+    }
+
+    fun insertUserToActiveCourier(userId: Int, shopId: Int) {
+        val params = MapSqlParameterSource()
+        params.addValue("userId", userId, Types.INTEGER)
+        params.addValue("shopId", shopId, Types.INTEGER)
+
+        val query = """
+            INSERT INTO "transport"."active_courier"(
+                        user_id,
+                        date,
+                        is_free,
+                        shop_id
+                    )
+                    VALUES (
+                        :userId,
+                        current_date,
+                        true,
+                        :shopId
+                    )
+        """.trimIndent()
+
+        template.update(query, params)
+    }
+
+    fun checkActiveCourier(shopId: Int) {
+        val params = MapSqlParameterSource()
+        params.addValue("shopId", shopId, Types.INTEGER)
+
+        val query = """
+            select c.user_id from "transport"."active_courier" c
+            where c.is_free = true
+            and c.date = current_date
+            and c.shop_id = :shopId
+            limit 1;
+            """.trimIndent()
+
+        val activeCourierId = template.queryForList(query, params, Int::class.java)
+
+        if(activeCourierId.isEmpty()) {
+            val userId = getRandomUserId()
+            insertUserToActiveCourier(userId, shopId)
+        }
+    }
