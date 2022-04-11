@@ -1,0 +1,63 @@
+package x5_qa.support.file_workers
+
+import org.apache.poi.ss.usermodel.Cell
+import org.apache.poi.xssf.usermodel.XSSFRow
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import java.io.File
+import java.io.FileOutputStream
+import java.io.FileWriter
+
+/**
+ * Метод генерирует .csv файл
+ * @param csvHeader - заголовок файла, должен быть в формате Заголовок1;Заголовок2;Заголовок3... через точку с запятой
+ * @param rows - строки которые нужно добавить в файл, также через точку с запятой
+ * @param name - название для файла
+ */
+object Csv {
+    fun сsvCreate(csvHeader: String, rows: List<String>, name: String) : File {
+        val importFile = File.createTempFile(name, ".csv")
+        var fileWriter: FileWriter? = null
+
+        fileWriter = FileWriter(importFile)
+        fileWriter.append(csvHeader)
+        rows.forEach {
+            fileWriter.append('\n')
+            fileWriter.append(it)
+        }
+        fileWriter.close()
+
+        return importFile
+    }
+}
+
+/**
+ * Метод генерирует .xls или .xlsx файл
+ * @param csvHeader - заголовок файла, должен быть в формате Заголовок1;Заголовок2;Заголовок3... через точку с запятой
+ * @param rows - строки которые нужно добавить в файл, также через точку с запятой
+ * @param name - название для файла
+ * @param  format - формат файла, который нужно сгенерировать, по умолчанию выбран формат .xlsx
+ */
+object Excel {
+    fun excelCreate(csvHeader: String, rows: MutableList<String>, name:String, format: String = ".xlsx"): File {
+        var importFile = File.createTempFile(name, format)
+        val fileOut = FileOutputStream(importFile)
+        rows.add(0, csvHeader)
+        val excelDoc = XSSFWorkbook()
+        val excelPage = excelDoc.createSheet("Page 1")
+        var excelRow: XSSFRow
+
+        rows.forEachIndexed { i, it ->
+            var elements = it.split(";")
+            excelRow = excelPage.createRow(i);
+            elements.forEachIndexed() { j, value ->
+                val name: Cell = excelRow.createCell(j)
+                name.setCellValue(value)
+            }
+        }
+
+        excelDoc.write(fileOut)
+        fileOut.close()
+        excelDoc.close();
+        return importFile
+    }
+}
